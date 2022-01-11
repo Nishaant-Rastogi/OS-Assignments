@@ -1,0 +1,82 @@
+diff --git a/b/linux-5.14.6/arch/x86/entry/syscalls/syscall_64.tbl b/a/linux-5.14.6/arch/x86/entry/syscalls/syscall_64.tbl
+index f6b5779..e69515e 100644
+--- a/b/linux-5.14.6/arch/x86/entry/syscalls/syscall_64.tbl
++++ b/a/linux-5.14.6/arch/x86/entry/syscalls/syscall_64.tbl
+@@ -369,7 +369,7 @@
+ 445	common	landlock_add_rule	sys_landlock_add_rule
+ 446	common	landlock_restrict_self	sys_landlock_restrict_self
+ 447	common	memfd_secret		sys_memfd_secret
+-
++448 	common  setVruntimeDelay    sys_setVruntimeDelay
+ #
+ # Due to a historical design error, certain syscalls are numbered differently
+ # in x32 as compared to native x86_64.  These syscalls have numbers 512-547.
+diff --git a/b/linux-5.14.6/include/linux/sched.h b/a/linux-5.14.6/include/linux/sched.h
+index ec8d07d..a6f68b8 100644
+--- a/b/linux-5.14.6/include/linux/sched.h
++++ b/a/linux-5.14.6/include/linux/sched.h
+@@ -475,7 +475,7 @@ struct sched_entity {
+ 	u64				prev_sum_exec_runtime;
+ 
+ 	u64				nr_migrations;
+-
++	u64				processDelay;
+ 	struct sched_statistics		statistics;
+ 
+ #ifdef CONFIG_FAIR_GROUP_SCHED
+diff --git a/b/linux-5.14.6/kernel/sched/core.c b/a/linux-5.14.6/kernel/sched/core.c
+index 399c37c..4bcf3a1 100644
+--- a/b/linux-5.14.6/kernel/sched/core.c
++++ b/a/linux-5.14.6/kernel/sched/core.c
+@@ -3956,6 +3956,7 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
+ 	p->se.prev_sum_exec_runtime	= 0;
+ 	p->se.nr_migrations		= 0;
+ 	p->se.vruntime			= 0;
++	p->se.processDelay		= 0;
+ 	INIT_LIST_HEAD(&p->se.group_node);
+ 
+ #ifdef CONFIG_FAIR_GROUP_SCHED
+diff --git a/b/linux-5.14.6/kernel/sched/fair.c b/a/linux-5.14.6/kernel/sched/fair.c
+index 30a6984..fe6bf27 100644
+--- a/b/linux-5.14.6/kernel/sched/fair.c
++++ b/a/linux-5.14.6/kernel/sched/fair.c
+@@ -811,7 +811,7 @@ static void update_curr(struct cfs_rq *cfs_rq)
+ 	curr->sum_exec_runtime += delta_exec;
+ 	schedstat_add(cfs_rq->exec_clock, delta_exec);
+ 
+-	curr->vruntime += calc_delta_fair(delta_exec, curr);
++	curr->vruntime += calc_delta_fair(delta_exec, curr)+curr->processDelay;
+ 	update_min_vruntime(cfs_rq);
+ 
+ 	if (entity_is_task(curr)) {
+diff --git a/b/linux-5.14.6/kernel/sys.c b/a/linux-5.14.6/kernel/sys.c
+index ef1a78f..93147ae 100644
+--- a/b/linux-5.14.6/kernel/sys.c
++++ b/a/linux-5.14.6/kernel/sys.c
+@@ -199,7 +199,26 @@ static int set_one_prio(struct task_struct *p, int niceval, int error)
+ out:
+ 	return error;
+ }
++SYSCALL_DEFINE2(setVruntimeDelay, pid_t, pid, long, delay){
++	struct pid *pidStruct = find_get_pid(pid);
++	if(pid < 0){
++		printk("Invalid Process ID");
++		return -1;
++	}
++	if(find_get_pid(pid) == NULL){
++		printk("Process Not Found");
++		return -1;
++	}
++
++	long nanoSecondsDelay = delay * 1000000;
++	struct task_struct *currentProcess;
++	currentProcess = pid_task(pidStruct, PIDTYPE_PGID);
++	currentProcess->se.processDelay = nanoSecondsDelay;
+ 
++	printk("Current Process being Handled: %d", pid);
++	printk("Updated Process vruntime is %lld", currentProcess->se.vruntime);
++	return 0;
++}
+ SYSCALL_DEFINE3(setpriority, int, which, int, who, int, niceval)
+ {
+ 	struct task_struct *g, *p;

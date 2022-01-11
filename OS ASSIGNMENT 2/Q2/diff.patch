@@ -1,0 +1,39 @@
+diff --git b/linux-5.14.6/arch/x86/entry/syscalls/syscall_64.tbl a/linux-5.14.6/arch/x86/entry/syscalls/syscall_64.tbl
+index f6b5779..7f600df 100644
+--- b/linux-5.14.6/arch/x86/entry/syscalls/syscall_64.tbl
++++ a/linux-5.14.6/arch/x86/entry/syscalls/syscall_64.tbl
+@@ -369,6 +369,7 @@
+ 445	common	landlock_add_rule	sys_landlock_add_rule
+ 446	common	landlock_restrict_self	sys_landlock_restrict_self
+ 447	common	memfd_secret		sys_memfd_secret
++448 common  kernel_2d_memcpy    sys_kernel_2d_memcpy
+ 
+ #
+ # Due to a historical design error, certain syscalls are numbered differently
+diff --git b/linux-5.14.6/kernel/sys.c a/linux-5.14.6/kernel/sys.c
+index ef1a78f..26819c8 100644
+--- b/linux-5.14.6/kernel/sys.c
++++ a/linux-5.14.6/kernel/sys.c
+@@ -200,6 +200,22 @@ out:
+ 	return error;
+ }
+ 
++SYSCALL_DEFINE4(kernel_2d_memcpy, float *, copyMatrix, float *, sourceMatrix, int, row, int, column)
++{
++	float temp[row][column];
++	int copyFromUser = __copy_from_user(temp, sourceMatrix, sizeof(temp));
++	if(copyFromUser){
++		printk("__copy_from_user FAILED");
++		return -1;
++	}
++	int copyToUser = __copy_to_user(copyMatrix, temp, sizeof(temp));
++	if(copyToUser){
++		printk("__copy_to_user FAILED");
++		return -1;
++	}
++	return 0;
++}
++
+ SYSCALL_DEFINE3(setpriority, int, which, int, who, int, niceval)
+ {
+ 	struct task_struct *g, *p;

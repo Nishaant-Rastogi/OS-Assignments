@@ -1,0 +1,77 @@
+diff --git b/linux-5.14.6/arch/x86/entry/syscalls/syscall_64.tbl a/linux-5.14.6/arch/x86/entry/syscalls/syscall_64.tbl
+index f6b5779..449e893 100644
+--- b/linux-5.14.6/arch/x86/entry/syscalls/syscall_64.tbl
++++ a/linux-5.14.6/arch/x86/entry/syscalls/syscall_64.tbl
+@@ -369,6 +369,8 @@
+ 445	common	landlock_add_rule	sys_landlock_add_rule
+ 446	common	landlock_restrict_self	sys_landlock_restrict_self
+ 447	common	memfd_secret		sys_memfd_secret
++448 common  reader              sys_reader
++449 common  writer              sys_writer
+ 
+ #
+ # Due to a historical design error, certain syscalls are numbered differently
+diff --git b/linux-5.14.6/kernel/sys.c a/linux-5.14.6/kernel/sys.c
+index ef1a78f..e63958b 100644
+--- b/linux-5.14.6/kernel/sys.c
++++ a/linux-5.14.6/kernel/sys.c
+@@ -154,6 +154,31 @@ int fs_overflowgid = DEFAULT_FS_OVERFLOWGID;
+ EXPORT_SYMBOL(fs_overflowuid);
+ EXPORT_SYMBOL(fs_overflowgid);
+ 
++unsigned long *workQueue = NULL;
++struct semaphore emptySemaphore;
++struct semaphore fullSemaphore;
++struct semaphore mutex;
++int write = 0;
++int read = 0;
++
++static void add(unsigned long element){
++	down_interruptible(&emptySemaphore);
++	down_interruptible(&mutex);
++	workQueue[write] = element;
++	write = (write+1)%7;
++	up(&mutex);
++	up(&fullSemaphore);
++	return;
++}
++static unsigned long delete(void){
++	down_interruptible(&fullSemaphore);
++	down_interruptible(&mutex);
++	unsigned long item = workQueue[read];
++	read = (read+1)%7;
++	up(&mutex);
++	up(&emptySemaphore);
++	return item;
++}
+ /*
+  * Returns true if current's euid is same as p's uid or euid,
+  * or has CAP_SYS_NICE to p's user_ns.
+@@ -199,7 +224,26 @@ static int set_one_prio(struct task_struct *p, int niceval, int error)
+ out:
+ 	return error;
+ }
+-
++SYSCALL_DEFINE1(writer, unsigned long, ele){
++	if(workQueue == NULL){
++		workQueue = (long *)kmalloc(7 * sizeof(unsigned long), GFP_KERNEL);
++		sema_init(&mutex, 1);
++		sema_init(&emptySemaphore, 7);
++		sema_init(&fullSemaphore, 0);
++	}
++	add(ele);
++	return 0;
++}
++SYSCALL_DEFINE1(reader, long, flag){
++	if(workQueue == NULL){
++		workQueue = (long *)kmalloc(7 * sizeof(unsigned long), GFP_KERNEL);
++		sema_init(&mutex, 1);
++		sema_init(&emptySemaphore, 7);
++		sema_init(&fullSemaphore, 0);	
++	}
++	unsigned long ele = delete();
++	return ele;
++}
+ SYSCALL_DEFINE3(setpriority, int, which, int, who, int, niceval)
+ {
+ 	struct task_struct *g, *p;
